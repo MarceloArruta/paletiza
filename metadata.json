@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Remix: Paletizador Inteligente ",
+  "description": "Sistema avançado de otimização de paletização logística para bebidas e fardos.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
