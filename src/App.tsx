@@ -2336,6 +2336,23 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
 
   React.useEffect(() => {
     async function startCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const isNotHttps = window.location.protocol !== 'https:' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+        let msg = "Acesso à câmera não disponível neste navegador ou ambiente.";
+        if (isNotHttps) {
+          msg = "O navegador bloqueia o acesso à câmera por falta de uma conexão segura HTTPS. Por favor, acesse usando https:// ou utilize o botão verde de Upload de Foto ao lado do campo de texto.";
+        } else {
+          msg = "O navegador ou o iframe (como no GitHub ou preview) bloqueou o acesso à câmera. Por favor, abra o aplicativo diretamente em uma nova aba do navegador ou utilize o botão de Upload de Foto.";
+        }
+        if (onError) {
+          setTimeout(() => onError(msg), 0);
+        } else {
+          console.warn("Camera failed to start:", msg);
+        }
+        setTimeout(() => onClose(), 0);
+        return;
+      }
+
       const constraints = [
         { 
           video: { 
@@ -2356,30 +2373,33 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
           if (videoRef.current) {
             videoRef.current.srcObject = s;
             
-            const track = s.getVideoTracks()[0];
-            const supportedConstraints = navigator.mediaDevices.getSupportedConstraints() as any;
-            
-            if (typeof track.getCapabilities === 'function') {
-              const capabilities = track.getCapabilities() as any;
+            const tracks = s.getVideoTracks();
+            const track = tracks && tracks.length > 0 ? tracks[0] : null;
+            if (track) {
+              const supportedConstraints = navigator.mediaDevices.getSupportedConstraints() as any;
               
-              if (capabilities.torch) setHasTorch(true);
-              if (capabilities.zoom) {
-                setHasZoom(true);
-                setZoomRange({
-                  min: capabilities.zoom.min || 1,
-                  max: capabilities.zoom.max || 1,
-                  step: capabilities.zoom.step || 0.1
-                });
-                setCurrentZoom(capabilities.zoom.min || 1);
-              }
-
-              if (supportedConstraints.focusMode && capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
-                try {
-                  await track.applyConstraints({
-                    advanced: [{ focusMode: 'continuous' }] as any
+              if (typeof track.getCapabilities === 'function') {
+                const capabilities = track.getCapabilities() as any;
+                
+                if (capabilities.torch) setHasTorch(true);
+                if (capabilities.zoom) {
+                  setHasZoom(true);
+                  setZoomRange({
+                    min: capabilities.zoom.min || 1,
+                    max: capabilities.zoom.max || 1,
+                    step: capabilities.zoom.step || 0.1
                   });
-                } catch (e) {
-                  console.warn("Foco contínuo não suportado ou falhou:", e);
+                  setCurrentZoom(capabilities.zoom.min || 1);
+                }
+
+                if (supportedConstraints.focusMode && capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
+                  try {
+                    await track.applyConstraints({
+                      advanced: [{ focusMode: 'continuous' }] as any
+                    });
+                  } catch (e) {
+                    console.warn("Foco contínuo não suportado ou falhou:", e);
+                  }
                 }
               }
             }
@@ -2394,8 +2414,8 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
       // Se todas as tentativas falharem
       console.error("Erro ao acessar câmera:", lastError);
       let msg = "Não foi possível acessar a câmera.";
-      if (lastError?.name === 'NotAllowedError' || lastError?.name === 'PermissionDeniedError' || lastError?.name === 'NotAllowedError') {
-        msg = "O acesso à câmera foi bloqueado ou negado pelo navegador/sistema. Por favor, use o botão de Upload de Foto (ícone de nuvem verde) ao lado da caixa de texto para escanear, ou tente abrir o aplicativo em uma nova guia fora do iframe.";
+      if (lastError?.name === 'NotAllowedError' || lastError?.name === 'PermissionDeniedError') {
+        msg = "O acesso à câmera foi negado pelo navegador ou sistema. Por favor, use o botão de Upload de Foto (ícone de nuvem verde) ao lado do campo de texto para fazer o escaneamento, ou abra o aplicativo em uma nova aba do navegador.";
       } else if (lastError?.name === 'NotFoundError' || lastError?.name === 'DevicesNotFoundError') {
         msg = "Nenhuma câmera física foi encontrada neste dispositivo. Use a opção de Upload de Foto.";
       } else {
