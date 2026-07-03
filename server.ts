@@ -108,8 +108,14 @@ async function startServer() {
       const rawText = response.text || "";
       console.log("Raw OCR response from Gemini:", rawText);
 
+      let cleanedText = rawText;
+      // Join spaces inside 9-digit numbers (e.g. 100 000 134 -> 100000134)
+      cleanedText = cleanedText.replace(/\b(\d{3})\s+(\d{3})\s+(\d{3})\b/g, '$1$2$3');
+      // Clean up spacing around colons
+      cleanedText = cleanedText.replace(/(\d{9})\s*:\s*(\d+)/g, '$1:$2');
+
       // Usar expressão regular para extrair APENAS padrões do tipo CÓDIGO (9 dígitos) opcionalmente seguidos por :QUANTIDADE
-      const matches = rawText.match(/\b\d{9}(?::\d+)?\b/g);
+      const matches = cleanedText.match(/\b\d{9}(?::\d+)?\b/g);
       const recognizedText = matches ? matches.join(' ') : '';
       console.log("Parsed recognized text:", recognizedText);
 

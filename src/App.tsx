@@ -342,6 +342,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanningStatus, setScanningStatus] = useState("Reconhecendo códigos...");
   const [is3DModalOpen, setIs3DModalOpen] = useState(false);
   const [configuringLayerId, setConfiguringLayerId] = useState<string | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -1198,6 +1199,7 @@ export default function App() {
 
   const handleScanImage = async (base64Image: string) => {
     setIsScanning(true);
+    setScanningStatus("Enviando para processamento...");
     let useClientFallback = false;
     let fallbackReason = "";
 
@@ -1247,48 +1249,109 @@ export default function App() {
 
       if (useClientFallback) {
         console.log(`Iniciando OCR local devido a: ${fallbackReason}`);
-        showToast("Hospedagem estática detectada (GitHub). Processando imagem localmente no seu navegador...", "info");
+        setScanningStatus("Iniciando leitor local no seu navegador...");
+        showToast("Processando imagem localmente no seu navegador...", "info");
         
-        const result = await Tesseract.recognize(base64Image, 'por+eng');
+        const result = await Tesseract.recognize(
+          base64Image, 
+          'por+eng',
+          {
+            logger: (m) => {
+              if (m.status === 'recognizing text') {
+                const percent = Math.round(m.progress * 100);
+                setScanningStatus(`Lendo papel localmente: ${percent}%`);
+              } else if (m.status === 'loading tesseract api' || m.status === 'initializing api') {
+                setScanningStatus("Carregando leitor inteligente...");
+              } else {
+                setScanningStatus("Processando caracteres...");
+              }
+            }
+          }
+        );
         const text = result.data.text;
         console.log("Texto bruto extraído pelo Tesseract:", text);
 
-        const lines = text.split('\n');
-        const results: string[] = [];
-        
-        for (const line of lines) {
-          const codeMatch = line.match(/\b\d{9}\b/);
-          if (codeMatch) {
-            const code = codeMatch[0];
-            const remainingLine = line.replace(code, '');
-            
-            let quantity = 0;
-            const quantMatch = remainingLine.match(/(?::|x|X|-|\bsl\b|\bqtd\b|\bqtd:\b|\bqty\b|\bqty:\b)?\s*\(?(\d{1,4})\)?/);
-            if (quantMatch && quantMatch[1]) {
-              const val = parseInt(quantMatch[1], 10);
-              if (val > 0 && val < 5000) {
-                quantity = val;
+        // EXTRAÇÃO INTELIGENTE COM TRATAMENTO DE ERROS DE OCR E ESPAÇAMENTO
+        const firstDigitLikes = "14Il|!TAH";
+        const digitLikes = "0123456789OoIl|!SsBbGgZzAa";
+        const separators = " .-_/\t";
+        const ocrResults: { code: string; quantity: number; index: number }[] = [];
+
+        for (let i = 0; i < text.length; i++) {
+          const char = text[i];
+          if (firstDigitLikes.indexOf(char) !== -1) {
+            let candidateStr = char;
+            let j = i + 1;
+            let digitLikesCount = 1;
+
+            while (j < text.length && candidateStr.length < 18 && digitLikesCount < 9) {
+              const nextChar = text[j];
+              if (digitLikes.indexOf(nextChar) !== -1) {
+                candidateStr += nextChar;
+                digitLikesCount++;
+                j++;
+              } else if (separators.indexOf(nextChar) !== -1) {
+                candidateStr += nextChar;
+                j++;
+              } else {
+                break;
               }
-            } else {
-              const anyNumberMatch = remainingLine.match(/\b(\d{1,4})\b/);
-              if (anyNumberMatch && anyNumberMatch[1]) {
-                const val = parseInt(anyNumberMatch[1], 10);
-                if (val > 0 && val < 5000) {
-                  quantity = val;
+            }
+
+            if (digitLikesCount === 9) {
+              let cleaned = "";
+              for (const c of candidateStr) {
+                if (digitLikes.indexOf(c) !== -1) {
+                  let mapped = c;
+                  if (c === 'O' || c === 'o') mapped = '0';
+                  else if (c === 'I' || c === 'l' || c === '|' || c === '!') mapped = '1';
+                  else if (c === 'S' || c === 's') mapped = '5';
+                  else if (c === 'B') mapped = '8';
+                  else if (c === 'G' || c === 'g') mapped = '6';
+                  else if (c === 'Z' || c === 'z') mapped = '2';
+                  else if (c === 'A') mapped = '4';
+                  else if (c === 'T') mapped = '1';
+                  else if (c === 'H' || c === 'h') mapped = '4';
+
+                  if (mapped >= '0' && mapped <= '9') {
+                    cleaned += mapped;
+                  }
+                }
+              }
+
+              if (cleaned.length === 9) {
+                if (cleaned.startsWith('1') || cleaned.startsWith('4') || PRODUCT_DB[cleaned]) {
+                  const followingText = text.substring(j, Math.min(text.length, j + 50));
+                  let quantity = 0;
+
+                  const explicitMatch = followingText.match(/(?::|x|X|-|\bsl\b|\bqtd\b|\bqtd:\b|\bqty\b|\bqty:\b)\s*\(?(\d{1,4})\)?/i);
+                  if (explicitMatch && explicitMatch[1]) {
+                    const val = parseInt(explicitMatch[1], 10);
+                    if (val > 0 && val < 5000) {
+                      quantity = val;
+                    }
+                  } else {
+                    const anyNumberMatch = followingText.match(/\b(\d{1,4})\b/);
+                    if (anyNumberMatch && anyNumberMatch[1]) {
+                      const val = parseInt(anyNumberMatch[1], 10);
+                      if (val > 0 && val < 5000) {
+                        quantity = val;
+                      }
+                    }
+                  }
+
+                  if (!ocrResults.some(r => r.code === cleaned && Math.abs(r.index - i) < 15)) {
+                    ocrResults.push({ code: cleaned, quantity, index: i });
+                  }
+                  i = j - 1;
                 }
               }
             }
-            results.push(`${code}:${quantity}`);
           }
         }
 
-        let recognizedText = results.join(' ');
-        if (!recognizedText) {
-          const allCodes = text.match(/\b\d{9}\b/g) || [];
-          if (allCodes.length > 0) {
-            recognizedText = allCodes.map(c => `${c}:0`).join(' ');
-          }
-        }
+        console.log("Resultados da extração inteligente local:", ocrResults);
+        let recognizedText = ocrResults.map(r => `${r.code}:${r.quantity}`).join(' ');
 
         if (recognizedText) {
           setInputCodes(prev => prev ? `${prev} ${recognizedText}` : recognizedText);
@@ -1566,6 +1629,7 @@ export default function App() {
               onClose={() => setIsCameraOpen(false)} 
               onCapture={handleScanImage}
               isScanning={isScanning}
+              scanningStatus={scanningStatus}
               onError={(msg) => {
                 setError(msg);
                 setTimeout(() => setError(null), 6000);
@@ -2425,7 +2489,7 @@ function Box3D({ position, size, color }: { position: [number, number, number], 
   );
 }
 
-function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () => void, onCapture: (img: string) => void, isScanning: boolean, onError?: (msg: string) => void }) {
+function CameraModal({ onClose, onCapture, isScanning, scanningStatus, onError }: { onClose: () => void, onCapture: (img: string) => void, isScanning: boolean, scanningStatus?: string, onError?: (msg: string) => void }) {
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -2755,9 +2819,9 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
               <canvas ref={canvasRef} className="hidden" />
               
               {isScanning && (
-                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white gap-3">
+                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white gap-3 px-4 text-center">
                   <Loader2 className="animate-spin" size={48} />
-                  <p className="font-bold">Reconhecendo códigos...</p>
+                  <p className="font-bold">{scanningStatus || "Reconhecendo códigos..."}</p>
                 </div>
               )}
 
