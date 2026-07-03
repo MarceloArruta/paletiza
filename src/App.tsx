@@ -30,7 +30,13 @@ import {
   History,
   Clock,
   Download,
-  Upload
+  Upload,
+  Share2,
+  Link,
+  QrCode,
+  MessageSquare,
+  Mail,
+  ExternalLink
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
@@ -337,6 +343,7 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [is3DModalOpen, setIs3DModalOpen] = useState(false);
   const [configuringLayerId, setConfiguringLayerId] = useState<string | null>(null);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   interface PalletHistoryEntry {
     id: string;
@@ -1287,6 +1294,14 @@ export default function App() {
               Teste de Empilhamento (50 SKUs - 110 Fardos)
             </button>
             <button 
+              onClick={() => setIsShareModalOpen(true)}
+              className="px-4 py-2 text-sm font-semibold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors flex items-center gap-2 shadow-sm"
+              title="Compartilhar aplicativo ou este palete configurado"
+            >
+              <Share2 size={16} className="text-indigo-600" />
+              Compartilhar
+            </button>
+            <button 
               onClick={handleClearAll}
               className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors flex items-center gap-2"
             >
@@ -1904,6 +1919,16 @@ export default function App() {
           )}
         </AnimatePresence>
 
+        {/* Share Modal */}
+        <AnimatePresence>
+          {isShareModalOpen && (
+            <ShareModal 
+              onClose={() => setIsShareModalOpen(false)}
+              showToast={showToast}
+            />
+          )}
+        </AnimatePresence>
+
       </div>
     </div>
   );
@@ -2331,6 +2356,7 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
   const [currentZoom, setCurrentZoom] = useState(1);
   const [guideWidth, setGuideWidth] = useState(80); // Porcentagem (10-100)
   const [guideHeight, setGuideHeight] = useState(33); // Porcentagem (10-100)
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const [focusPoint, setFocusPoint] = useState<{ x: number, y: number } | null>(null);
 
@@ -2349,7 +2375,7 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
         } else {
           console.warn("Camera failed to start:", msg);
         }
-        setTimeout(() => onClose(), 0);
+        setLocalError(msg);
         return;
       }
 
@@ -2412,7 +2438,7 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
       }
 
       // Se todas as tentativas falharem
-      console.error("Erro ao acessar câmera:", lastError);
+      console.warn("Erro ao acessar câmera:", lastError);
       let msg = "Não foi possível acessar a câmera.";
       if (lastError?.name === 'NotAllowedError' || lastError?.name === 'PermissionDeniedError') {
         msg = "O acesso à câmera foi negado pelo navegador ou sistema. Por favor, use o botão de Upload de Foto (ícone de nuvem verde) ao lado do campo de texto para fazer o escaneamento, ou abra o aplicativo em uma nova aba do navegador.";
@@ -2427,7 +2453,7 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
       } else {
         console.warn("Camera failed to start:", msg);
       }
-      setTimeout(() => onClose(), 0);
+      setLocalError(msg);
     }
     startCamera();
     return () => {
@@ -2446,7 +2472,7 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
         });
         setCurrentZoom(value);
       } catch (e) {
-        console.error("Erro ao ajustar zoom:", e);
+        console.warn("Erro ao ajustar zoom:", e);
       }
     }
   };
@@ -2460,7 +2486,7 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
         });
         setIsTorchOn(!isTorchOn);
       } catch (e) {
-        console.error("Erro ao alternar lanterna:", e);
+        console.warn("Erro ao alternar lanterna:", e);
       }
     }
   };
@@ -2577,179 +2603,240 @@ function CameraModal({ onClose, onCapture, isScanning, onError }: { onClose: () 
           </button>
         </div>
         
-        <div 
-          className="relative aspect-video bg-black cursor-crosshair overflow-hidden"
-          onClick={triggerFocus}
-        >
-          <video 
-            ref={videoRef} 
-            autoPlay 
-            playsInline 
-            className="w-full h-full object-cover"
-          />
-          <canvas ref={canvasRef} className="hidden" />
-          
-          {isScanning && (
-            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white gap-3">
-              <Loader2 className="animate-spin" size={48} />
-              <p className="font-bold">Reconhecendo códigos...</p>
+        {localError ? (
+          <div className="p-6 flex flex-col items-center text-center gap-4">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center shadow-inner">
+              <AlertCircle size={36} />
             </div>
-          )}
+            
+            <div className="space-y-2">
+              <h4 className="text-lg font-black text-slate-800 font-sans">Câmera Não Disponível</h4>
+              <p className="text-sm text-slate-600 leading-relaxed max-w-sm font-sans">
+                {localError}
+              </p>
+            </div>
 
-          {/* Quality Badge */}
-          <div className="absolute top-4 left-4 bg-black/40 backdrop-blur-sm text-white px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 pointer-events-none">
-            <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
-            HD 1080p • QUALIDADE MÁXIMA
-          </div>
+            <div className="w-full flex flex-col gap-2 pt-2">
+              <a 
+                href={window.location.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3.5 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all text-center flex items-center justify-center gap-2 shadow-lg shadow-indigo-100 text-sm font-sans"
+              >
+                ABRIR EM NOVA ABA (RECOMENDADO)
+                <ChevronRight size={18} />
+              </a>
 
-          {/* Torch Toggle */}
-          {hasTorch && (
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                toggleTorch();
-              }}
-              className={`absolute top-4 right-4 p-3 rounded-full transition-all ${
-                isTorchOn ? 'bg-yellow-400 text-black' : 'bg-black/40 text-white'
-              }`}
-            >
-              {isTorchOn ? <Zap size={20} /> : <ZapOff size={20} />}
-            </button>
-          )}
-
-          {/* Focus Ring */}
-          <AnimatePresence>
-            {focusPoint && (
-              <motion.div 
-                initial={{ scale: 2, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="absolute w-16 h-16 border-2 border-yellow-400 rounded-full pointer-events-none"
-                style={{ left: focusPoint.x - 32, top: focusPoint.y - 32 }}
+              <label 
+                htmlFor="modal-file-upload-error" 
+                className="w-full py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer text-sm border border-emerald-200 font-sans"
+              >
+                <Upload size={18} />
+                CARREGAR FOTO DA GALERIA
+              </label>
+              <input 
+                type="file" 
+                accept="image/*" 
+                id="modal-file-upload-error"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const base64 = reader.result as string;
+                      onCapture(base64);
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                className="hidden"
               />
-            )}
-          </AnimatePresence>
 
-          {/* Guide Overlay */}
-          <div className="absolute inset-0 border-2 border-white/30 pointer-events-none flex items-center justify-center">
-            <motion.div 
-              animate={{ 
-                width: `${guideWidth}%`,
-                height: `${guideHeight}%`
-              }}
-              className="border-2 border-indigo-400 rounded-lg shadow-[0_0_0_1000px_rgba(0,0,0,0.4)] relative overflow-hidden"
-            >
-              {/* Scanning Line Animation */}
-              <motion.div 
-                animate={{ top: ['0%', '100%', '0%'] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                className="absolute left-0 right-0 h-0.5 bg-indigo-400/50 shadow-[0_0_10px_rgba(129,140,248,0.8)] z-10"
-              />
-            </motion.div>
+              <button 
+                onClick={onClose}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold rounded-xl transition-all text-sm font-sans"
+              >
+                Fechar
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          <>
+            <div 
+              className="relative aspect-video bg-black cursor-crosshair overflow-hidden"
+              onClick={triggerFocus}
+            >
+              <video 
+                ref={videoRef} 
+                autoPlay 
+                playsInline 
+                className="w-full h-full object-cover"
+              />
+              <canvas ref={canvasRef} className="hidden" />
+              
+              {isScanning && (
+                <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white gap-3">
+                  <Loader2 className="animate-spin" size={48} />
+                  <p className="font-bold">Reconhecendo códigos...</p>
+                </div>
+              )}
 
-        <div className="p-6 flex flex-col gap-4">
-          {/* Controls Container */}
-          <div className="space-y-3">
-            {/* Zoom Control */}
-            {hasZoom && (
-              <div className="flex items-center gap-3 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100">
-                <ZoomOut size={16} className="text-slate-400" />
-                <input 
-                  type="range"
-                  min={zoomRange.min}
-                  max={zoomRange.max}
-                  step={zoomRange.step}
-                  value={currentZoom}
-                  onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
-                  className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                />
-                <ZoomIn size={16} className="text-slate-400" />
-                <span className="text-[10px] font-mono font-bold text-indigo-600 w-8 text-right">
-                  {currentZoom.toFixed(1)}x
-                </span>
+              {/* Quality Badge */}
+              <div className="absolute top-4 left-4 bg-black/40 backdrop-blur-sm text-white px-2 py-1 rounded text-[10px] font-bold flex items-center gap-1 pointer-events-none">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                HD 1080p • QUALIDADE MÁXIMA
               </div>
-            )}
 
-            {/* Guide Width Control */}
-            <div className="flex items-center gap-3 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100">
-              <ArrowLeftRight size={16} className="text-slate-400" />
-              <input 
-                type="range"
-                min="10"
-                max="100"
-                step="1"
-                value={guideWidth}
-                onChange={(e) => setGuideWidth(parseInt(e.target.value))}
-                className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-              />
-              <span className="text-[10px] font-mono font-bold text-indigo-600 w-8 text-right">
-                {guideWidth}%
-              </span>
+              {/* Torch Toggle */}
+              {hasTorch && (
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleTorch();
+                  }}
+                  className={`absolute top-4 right-4 p-3 rounded-full transition-all ${
+                    isTorchOn ? 'bg-yellow-400 text-black' : 'bg-black/40 text-white'
+                  }`}
+                >
+                  {isTorchOn ? <Zap size={20} /> : <ZapOff size={20} />}
+                </button>
+              )}
+
+              {/* Focus Ring */}
+              <AnimatePresence>
+                {focusPoint && (
+                  <motion.div 
+                    initial={{ scale: 2, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute w-16 h-16 border-2 border-yellow-400 rounded-full pointer-events-none"
+                    style={{ left: focusPoint.x - 32, top: focusPoint.y - 32 }}
+                  />
+                )}
+              </AnimatePresence>
+
+              {/* Guide Overlay */}
+              <div className="absolute inset-0 border-2 border-white/30 pointer-events-none flex items-center justify-center">
+                <motion.div 
+                  animate={{ 
+                    width: `${guideWidth}%`,
+                    height: `${guideHeight}%`
+                  }}
+                  className="border-2 border-indigo-400 rounded-lg shadow-[0_0_0_1000px_rgba(0,0,0,0.4)] relative overflow-hidden"
+                >
+                  {/* Scanning Line Animation */}
+                  <motion.div 
+                    animate={{ top: ['0%', '100%', '0%'] }}
+                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+                    className="absolute left-0 right-0 h-0.5 bg-indigo-400/50 shadow-[0_0_10px_rgba(129,140,248,0.8)] z-10"
+                  />
+                </motion.div>
+              </div>
             </div>
 
-            {/* Guide Height Control */}
-            <div className="flex items-center gap-3 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100">
-              <ArrowUpDown size={16} className="text-slate-400" />
-              <input 
-                type="range"
-                min="10"
-                max="100"
-                step="1"
-                value={guideHeight}
-                onChange={(e) => setGuideHeight(parseInt(e.target.value))}
-                className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-              />
-              <span className="text-[10px] font-mono font-bold text-indigo-600 w-8 text-right">
-                {guideHeight}%
-              </span>
+            <div className="p-6 flex flex-col gap-4">
+              {/* Controls Container */}
+              <div className="space-y-3">
+                {/* Zoom Control */}
+                {hasZoom && (
+                  <div className="flex items-center gap-3 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100">
+                    <ZoomOut size={16} className="text-slate-400" />
+                    <input 
+                      type="range"
+                      min={zoomRange.min}
+                      max={zoomRange.max}
+                      step={zoomRange.step}
+                      value={currentZoom}
+                      onChange={(e) => handleZoomChange(parseFloat(e.target.value))}
+                      className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                    />
+                    <ZoomIn size={16} className="text-slate-400" />
+                    <span className="text-[10px] font-mono font-bold text-indigo-600 w-8 text-right">
+                      {currentZoom.toFixed(1)}x
+                    </span>
+                  </div>
+                )}
+
+                {/* Guide Width Control */}
+                <div className="flex items-center gap-3 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100">
+                  <ArrowLeftRight size={16} className="text-slate-400" />
+                  <input 
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="1"
+                    value={guideWidth}
+                    onChange={(e) => setGuideWidth(parseInt(e.target.value))}
+                    className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <span className="text-[10px] font-mono font-bold text-indigo-600 w-8 text-right">
+                    {guideWidth}%
+                  </span>
+                </div>
+
+                {/* Guide Height Control */}
+                <div className="flex items-center gap-3 bg-slate-50 p-2 px-3 rounded-xl border border-slate-100">
+                  <ArrowUpDown size={16} className="text-slate-400" />
+                  <input 
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="1"
+                    value={guideHeight}
+                    onChange={(e) => setGuideHeight(parseInt(e.target.value))}
+                    className="flex-1 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                  />
+                  <span className="text-[10px] font-mono font-bold text-indigo-600 w-8 text-right">
+                    {guideHeight}%
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-slate-500 text-center leading-tight">
+                Toque para focar. Ajuste o zoom e o tamanho da área de captura nos controles acima.
+              </p>
+              
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    capture();
+                  }}
+                  disabled={isScanning}
+                  className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
+                >
+                  {isScanning ? <Loader2 className="animate-spin" /> : <Camera />}
+                  {isScanning ? 'PROCESSANDO...' : 'CAPTURAR E RECONHECER'}
+                </button>
+
+                <label 
+                  htmlFor="modal-file-upload" 
+                  className={`w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer text-sm ${isScanning ? 'pointer-events-none opacity-50' : ''}`}
+                >
+                  <Upload size={18} />
+                  CARREGAR FOTO DA GALERIA
+                </label>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  id="modal-file-upload"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = () => {
+                        const base64 = reader.result as string;
+                        onCapture(base64);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="hidden"
+                />
+              </div>
             </div>
-          </div>
-
-          <p className="text-[10px] text-slate-500 text-center leading-tight">
-            Toque para focar. Ajuste o zoom e o tamanho da área de captura nos controles acima.
-          </p>
-          
-          <div className="flex flex-col gap-2">
-            <button 
-              onClick={(e) => {
-                e.stopPropagation();
-                capture();
-              }}
-              disabled={isScanning}
-              className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 disabled:opacity-50 flex items-center justify-center gap-2 active:scale-95"
-            >
-              {isScanning ? <Loader2 className="animate-spin" /> : <Camera />}
-              {isScanning ? 'PROCESSANDO...' : 'CAPTURAR E RECONHECER'}
-            </button>
-
-            <label 
-              htmlFor="modal-file-upload" 
-              className={`w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer text-sm ${isScanning ? 'pointer-events-none opacity-50' : ''}`}
-            >
-              <Upload size={18} />
-              CARREGAR FOTO DA GALERIA
-            </label>
-            <input 
-              type="file" 
-              accept="image/*" 
-              id="modal-file-upload"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    const base64 = reader.result as string;
-                    onCapture(base64);
-                  };
-                  reader.readAsDataURL(file);
-                }
-              }}
-              className="hidden"
-            />
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </motion.div>
   );
@@ -3310,5 +3397,185 @@ function LayerConfigModal({
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+function ShareModal({ 
+  onClose,
+  showToast
+}: { 
+  onClose: () => void;
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const getShareUrl = () => {
+    let origin = window.location.origin + window.location.pathname;
+    if (origin.includes('ais-dev-')) {
+      origin = origin.replace('ais-dev-', 'ais-pre-');
+    }
+    return origin;
+  };
+
+  const shareUrl = getShareUrl();
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      showToast("Link do aplicativo copiado!", "success");
+      setTimeout(() => setCopied(false), 3000);
+    } catch (err) {
+      console.error("Erro ao copiar:", err);
+      showToast("Falha ao copiar o link.", "error");
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Paletizador Inteligente',
+          text: 'Confira este aplicativo para otimização de fardos e paletização inteligente!',
+          url: shareUrl,
+        });
+      } catch (err) {
+        console.warn("Compartilhamento nativo cancelado ou falhou:", err);
+      }
+    }
+  };
+
+  const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
+    'Confira este excelente aplicativo para otimização de fardos e paletização inteligente! Acesse: ' + shareUrl
+  )}`;
+
+  const emailUrl = `mailto:?subject=${encodeURIComponent('Paletizador Inteligente')}&body=${encodeURIComponent(
+    'Olá, gostaria de compartilhar o Paletizador Inteligente para otimização de carregamento e logística:\n\n' + shareUrl
+  )}`;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.5 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 cursor-pointer"
+      />
+
+      {/* Dialog */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+        className="fixed inset-x-4 bottom-4 md:bottom-auto md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 max-w-lg w-full bg-white rounded-3xl shadow-2xl z-50 border border-slate-150 flex flex-col overflow-hidden max-h-[90vh]"
+      >
+        {/* Header */}
+        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-50 rounded-xl text-indigo-600">
+              <Share2 size={20} />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-slate-800 text-lg leading-tight">Compartilhar Aplicativo</h3>
+              <p className="text-[11px] text-slate-400 font-semibold leading-none mt-1">Envie o link de acesso ao aplicativo para outras pessoas</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-all"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Link Box */}
+          <div className="space-y-1.5">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-sans">
+              Link de Acesso ao Aplicativo
+            </label>
+            <div className="flex gap-2">
+              <div className="flex-1 bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2.5 text-xs text-slate-500 font-mono truncate select-all">
+                {shareUrl}
+              </div>
+              <button
+                onClick={handleCopy}
+                className={`px-4 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1 shrink-0 ${
+                  copied 
+                    ? 'bg-emerald-600 text-white shadow-md shadow-emerald-100' 
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-100'
+                }`}
+              >
+                {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                {copied ? 'Copiado' : 'Copiar'}
+              </button>
+            </div>
+          </div>
+
+          {/* QR Code and Quick Share */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+            {/* QR Code */}
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col items-center justify-center text-center gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-sans">Escanear com Celular</span>
+              <div className="bg-white p-2 rounded-xl border border-slate-200/40 shadow-sm shrink-0 w-[130px] h-[130px] flex items-center justify-center">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=114x114&data=${encodeURIComponent(shareUrl)}`}
+                  alt="QR Code de Compartilhamento"
+                  className="w-[114px] h-[114px]"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+              <p className="text-[9px] text-slate-400 font-medium leading-tight max-w-[150px]">
+                Abra a câmera do celular para abrir o aplicativo instantaneamente
+              </p>
+            </div>
+
+            {/* Quick Share Buttons */}
+            <div className="flex flex-col gap-2 justify-center">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-sans">Compartilhamento Rápido</span>
+              
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2.5 px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 text-center justify-center"
+              >
+                <MessageSquare size={16} />
+                Enviar via WhatsApp
+              </a>
+
+              <a
+                href={emailUrl}
+                className="flex items-center gap-2.5 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 text-center justify-center"
+              >
+                <Mail size={16} />
+                Enviar via E-mail
+              </a>
+
+              {navigator.share && (
+                <button
+                  onClick={handleNativeShare}
+                  className="flex items-center gap-2.5 px-4 py-3 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl font-bold text-xs transition-all shadow-sm active:scale-95 justify-center"
+                >
+                  <Share2 size={16} />
+                  Mais Opções do Sistema
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
+          <p className="text-[10px] text-slate-400 leading-tight">
+            Envie este link para colegas para que eles possam utilizar o Paletizador Inteligente em seus próprios dispositivos.
+          </p>
+        </div>
+      </motion.div>
+    </>
   );
 }
