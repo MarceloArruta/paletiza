@@ -1232,7 +1232,10 @@ export default function App() {
             const txt = await response.text();
             errorMsg = txt || `Erro do servidor (Código ${response.status})`;
           }
-          throw new Error(errorMsg);
+          console.warn("Erro ao usar API de IA para OCR, usando fallback local:", errorMsg);
+          useClientFallback = true;
+          fallbackReason = `Erro do servidor (${errorMsg}). Ativando processamento local.`;
+          showToast("Servidor sem chave Gemini. Usando leitor local...", "warning");
         } else {
           const data = await response.json();
           const recognizedText = data.recognizedText || "";
@@ -1272,8 +1275,8 @@ export default function App() {
         console.log("Texto bruto extraído pelo Tesseract:", text);
 
         // EXTRAÇÃO INTELIGENTE COM TRATAMENTO DE ERROS DE OCR E ESPAÇAMENTO
-        const firstDigitLikes = "14Il|!TAH";
-        const digitLikes = "0123456789OoIl|!SsBbGgZzAa";
+        const firstDigitLikes = "0123456789OoIl|!SsBbGgZzAaTtHh";
+        const digitLikes = "0123456789OoIl|!SsBbGgZzAaTtHh";
         const separators = " .-_/\t";
         const ocrResults: { code: string; quantity: number; index: number }[] = [];
 
@@ -1306,11 +1309,11 @@ export default function App() {
                   if (c === 'O' || c === 'o') mapped = '0';
                   else if (c === 'I' || c === 'l' || c === '|' || c === '!') mapped = '1';
                   else if (c === 'S' || c === 's') mapped = '5';
-                  else if (c === 'B') mapped = '8';
+                  else if (c === 'B' || c === 'b') mapped = '8';
                   else if (c === 'G' || c === 'g') mapped = '6';
                   else if (c === 'Z' || c === 'z') mapped = '2';
-                  else if (c === 'A') mapped = '4';
-                  else if (c === 'T') mapped = '1';
+                  else if (c === 'A' || c === 'a') mapped = '4';
+                  else if (c === 'T' || c === 't') mapped = '1';
                   else if (c === 'H' || c === 'h') mapped = '4';
 
                   if (mapped >= '0' && mapped <= '9') {
