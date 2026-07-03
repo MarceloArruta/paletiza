@@ -33,6 +33,19 @@ async function startServer() {
         return res.status(400).json({ error: "Chave API do Gemini não configurada. Se você estiver usando o Google AI Studio, adicione sua chave de API válida no menu superior direito em 'Settings > Secrets' (Configurações > Segredos). Se exportou o projeto para o GitHub, local ou hospedado em outra plataforma (como Vercel ou Render), configure a variável de ambiente GEMINI_API_KEY com a sua chave obtida no Google AI Studio." });
       }
 
+      // Extrai o tipo de mídia (mimeType) e os dados puros em base64 com segurança
+      let mimeType = "image/jpeg";
+      let base64Data = base64Image;
+
+      if (base64Image.includes(";base64,")) {
+        const parts = base64Image.split(";base64,");
+        mimeType = parts[0].replace("data:", "");
+        base64Data = parts[1];
+      } else if (base64Image.includes(",")) {
+        const parts = base64Image.split(",");
+        base64Data = parts[1];
+      }
+
       const ai = new GoogleGenAI({ 
         apiKey,
         httpOptions: {
@@ -62,8 +75,8 @@ async function startServer() {
               contents: [
                 {
                   parts: [
-                    { text: "Extract product codes (9 digits) and quantities (number before parentheses like '(CX6)'). Return as CODE:QUANTITY separated by spaces. If quantity is not found, use 0 (e.g., 400001889:0). Only return codes and quantities." },
-                    { inlineData: { data: base64Image.split(',')[1], mimeType: "image/jpeg" } }
+                    { text: "Extract product codes (exactly 9 digits, e.g. 100000134 or 400001625) and their associated quantities from the image. For each detected product, return in the format 'CODE:QUANTITY'. If the quantity is not specified, use 0 (e.g. 100000134:0). Separate each CODE:QUANTITY pair with a single space. Do NOT return any markdown, explanations, list indices, bullet points, or introductory text. Just the codes and quantities." },
+                    { inlineData: { data: base64Data, mimeType: mimeType } }
                   ]
                 }
               ],
@@ -93,7 +106,12 @@ async function startServer() {
       }
 
       const rawText = response.text || "";
-      const recognizedText = rawText.replace(/[^0-9:\s]/g, '').replace(/\s+/g, ' ').trim();
+      console.log("Raw OCR response from Gemini:", rawText);
+
+      // Usar expressão regular para extrair APENAS padrões do tipo CÓDIGO (9 dígitos) opcionalmente seguidos por :QUANTIDADE
+      const matches = rawText.match(/\b\d{9}(?::\d+)?\b/g);
+      const recognizedText = matches ? matches.join(' ') : '';
+      console.log("Parsed recognized text:", recognizedText);
 
       return res.json({ recognizedText });
     } catch (err: any) {
