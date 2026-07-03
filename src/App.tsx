@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo } from 'react';
+import Tesseract from 'tesseract.js';
 import { 
   Package, 
   Plus, 
@@ -1197,20 +1198,31 @@ export default function App() {
 
   const handleScanImage = async (base64Image: string) => {
     setIsScanning(true);
-    try {
-      const response = await fetch('/api/scan-image', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ base64Image })
-      });
+    let useClientFallback = false;
+    let fallbackReason = "";
 
-      if (!response.ok) {
-        let errorMsg = "";
+    try {
+      let response;
+      try {
+        response = await fetch('/api/scan-image', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ base64Image })
+        });
+      } catch (fetchErr: any) {
+        console.warn("Falha ao se conectar à API do servidor. Usando fallback local:", fetchErr);
+        useClientFallback = true;
+        fallbackReason = "Servidor offline ou ambiente estático (como GitHub Pages) detectado.";
+      }
+
+      if (!useClientFallback && response) {
         if (response.status === 404) {
-          errorMsg = "O endpoint do servidor não foi encontrado (Erro 404). Se você hospedou este aplicativo em um servidor de arquivos estáticos (como GitHub Pages), lembre-se de que a leitura de imagens requer um servidor Node.js ativo rodando para executar a API do Gemini de forma segura.";
-        } else {
+          useClientFallback = true;
+          fallbackReason = "O endpoint /api/scan-image não existe neste servidor (ambiente estático).";
+        } else if (!response.ok) {
+          let errorMsg = "";
           try {
             const errData = await response.json();
             errorMsg = errData.error || `Erro do servidor (Código ${response.status})`;
@@ -1218,27 +1230,78 @@ export default function App() {
             const txt = await response.text();
             errorMsg = txt || `Erro do servidor (Código ${response.status})`;
           }
+          throw new Error(errorMsg);
+        } else {
+          const data = await response.json();
+          const recognizedText = data.recognizedText || "";
+          
+          if (recognizedText) {
+            setInputCodes(prev => prev ? `${prev} ${recognizedText}` : recognizedText);
+            showToast("Imagem processada via IA (Gemini)!", "success");
+          } else {
+            setError("Nenhum código ou quantidade reconhecida na imagem.");
+            setTimeout(() => setError(null), 4000);
+          }
         }
-        throw new Error(errorMsg);
       }
 
-      const data = await response.json();
-      const recognizedText = data.recognizedText || "";
-      
-      if (recognizedText) {
-        setInputCodes(prev => prev ? `${prev} ${recognizedText}` : recognizedText);
-        showToast("Imagem processada com sucesso!", "success");
-      } else {
-        setError("Nenhum código ou quantidade reconhecida na imagem.");
-        setTimeout(() => setError(null), 4000);
+      if (useClientFallback) {
+        console.log(`Iniciando OCR local devido a: ${fallbackReason}`);
+        showToast("Hospedagem estática detectada (GitHub). Processando imagem localmente no seu navegador...", "info");
+        
+        const result = await Tesseract.recognize(base64Image, 'por+eng');
+        const text = result.data.text;
+        console.log("Texto bruto extraído pelo Tesseract:", text);
+
+        const lines = text.split('\n');
+        const results: string[] = [];
+        
+        for (const line of lines) {
+          const codeMatch = line.match(/\b\d{9}\b/);
+          if (codeMatch) {
+            const code = codeMatch[0];
+            const remainingLine = line.replace(code, '');
+            
+            let quantity = 0;
+            const quantMatch = remainingLine.match(/(?::|x|X|-|\bsl\b|\bqtd\b|\bqtd:\b|\bqty\b|\bqty:\b)?\s*\(?(\d{1,4})\)?/);
+            if (quantMatch && quantMatch[1]) {
+              const val = parseInt(quantMatch[1], 10);
+              if (val > 0 && val < 5000) {
+                quantity = val;
+              }
+            } else {
+              const anyNumberMatch = remainingLine.match(/\b(\d{1,4})\b/);
+              if (anyNumberMatch && anyNumberMatch[1]) {
+                const val = parseInt(anyNumberMatch[1], 10);
+                if (val > 0 && val < 5000) {
+                  quantity = val;
+                }
+              }
+            }
+            results.push(`${code}:${quantity}`);
+          }
+        }
+
+        let recognizedText = results.join(' ');
+        if (!recognizedText) {
+          const allCodes = text.match(/\b\d{9}\b/g) || [];
+          if (allCodes.length > 0) {
+            recognizedText = allCodes.map(c => `${c}:0`).join(' ');
+          }
+        }
+
+        if (recognizedText) {
+          setInputCodes(prev => prev ? `${prev} ${recognizedText}` : recognizedText);
+          showToast("Imagem processada localmente com sucesso!", "success");
+        } else {
+          setError("Não foi possível identificar nenhum código de 9 dígitos nesta imagem. Verifique a iluminação e legibilidade do papel.");
+          setTimeout(() => setError(null), 8000);
+        }
       }
+
     } catch (err: any) {
-      console.error("Erro no reconhecimento:", err);
-      let displayError = err.message || "Erro ao processar imagem. Tente novamente.";
-      if (displayError.includes("Failed to fetch") || displayError.includes("fetch failed") || displayError.includes("NetworkError")) {
-        displayError = "Falha de conexão com o servidor. Se você estiver usando o GitHub Pages ou outro serviço estático, essa funcionalidade precisa de um backend Node.js ativo.";
-      }
-      setError(displayError);
+      console.error("Erro no reconhecimento de imagem:", err);
+      setError(err.message || "Erro ao processar imagem. Tente novamente.");
       setTimeout(() => setError(null), 10000);
     } finally {
       setIsScanning(false);
