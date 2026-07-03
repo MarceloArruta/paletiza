@@ -30,7 +30,7 @@ async function startServer() {
       }
       if (!apiKey || apiKey === "MY_GEMINI_API_KEY") {
         console.warn("GEMINI_API_KEY env variable is not set or is using placeholder.");
-        return res.status(400).json({ error: "Chave API do Gemini não configurada. Por favor, adicione sua chave válida em 'Settings > Secrets' (Configurações > Segredos) no menu superior direito do Google AI Studio para usar a câmera." });
+        return res.status(400).json({ error: "Chave API do Gemini não configurada. Se você estiver usando o Google AI Studio, adicione sua chave de API válida no menu superior direito em 'Settings > Secrets' (Configurações > Segredos). Se exportou o projeto para o GitHub, local ou hospedado em outra plataforma (como Vercel ou Render), configure a variável de ambiente GEMINI_API_KEY com a sua chave obtida no Google AI Studio." });
       }
 
       const ai = new GoogleGenAI({ 

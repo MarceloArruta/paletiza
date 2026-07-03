@@ -1207,7 +1207,19 @@ export default function App() {
       });
 
       if (!response.ok) {
-        throw new Error(await response.text());
+        let errorMsg = "";
+        if (response.status === 404) {
+          errorMsg = "O endpoint do servidor não foi encontrado (Erro 404). Se você hospedou este aplicativo em um servidor de arquivos estáticos (como GitHub Pages), lembre-se de que a leitura de imagens requer um servidor Node.js ativo rodando para executar a API do Gemini de forma segura.";
+        } else {
+          try {
+            const errData = await response.json();
+            errorMsg = errData.error || `Erro do servidor (Código ${response.status})`;
+          } catch {
+            const txt = await response.text();
+            errorMsg = txt || `Erro do servidor (Código ${response.status})`;
+          }
+        }
+        throw new Error(errorMsg);
       }
 
       const data = await response.json();
@@ -1215,14 +1227,19 @@ export default function App() {
       
       if (recognizedText) {
         setInputCodes(prev => prev ? `${prev} ${recognizedText}` : recognizedText);
+        showToast("Imagem processada com sucesso!", "success");
       } else {
         setError("Nenhum código ou quantidade reconhecida na imagem.");
-        setTimeout(() => setError(null), 3000);
+        setTimeout(() => setError(null), 4000);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Erro no reconhecimento:", err);
-      setError("Erro ao processar imagem. Tente novamente.");
-      setTimeout(() => setError(null), 3000);
+      let displayError = err.message || "Erro ao processar imagem. Tente novamente.";
+      if (displayError.includes("Failed to fetch") || displayError.includes("fetch failed") || displayError.includes("NetworkError")) {
+        displayError = "Falha de conexão com o servidor. Se você estiver usando o GitHub Pages ou outro serviço estático, essa funcionalidade precisa de um backend Node.js ativo.";
+      }
+      setError(displayError);
+      setTimeout(() => setError(null), 10000);
     } finally {
       setIsScanning(false);
       setIsCameraOpen(false);
