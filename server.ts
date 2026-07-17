@@ -56,7 +56,7 @@ async function startServer() {
       });
       let response;
       let lastError: any = null;
-      const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"];
+      const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
       
       for (const model of modelsToTry) {
         let attempts = 0;
@@ -88,6 +88,22 @@ async function startServer() {
             lastError = err;
             attempts++;
             console.warn(`Erro na tentativa ${attempts} com o modelo ${model}:`, err.message || err);
+            
+            const errMsg = String(err.message || err || "").toLowerCase();
+            const isTransientOrQuotaError = errMsg.includes("429") || 
+                                           errMsg.includes("503") ||
+                                           errMsg.includes("resource_exhausted") || 
+                                           errMsg.includes("quota") || 
+                                           errMsg.includes("exceeded") ||
+                                           errMsg.includes("unavailable") ||
+                                           errMsg.includes("high demand") ||
+                                           errMsg.includes("temporary");
+            
+            if (isTransientOrQuotaError) {
+              console.warn(`Modelo ${model} retornou erro de limite ou indisponibilidade (Código 429/503). Pulando imediatamente para o próximo modelo.`);
+              break;
+            }
+            
             if (attempts < maxAttempts) {
               // Exponential backoff with jitter to alleviate rate-limiting and demand spikes
               const delay = Math.pow(2, attempts) * 1000 + Math.floor(Math.random() * 1000);

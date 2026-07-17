@@ -1226,11 +1226,15 @@ export default function App() {
         } else if (!response.ok) {
           let errorMsg = "";
           try {
-            const errData = await response.json();
-            errorMsg = errData.error || `Erro do servidor (Código ${response.status})`;
-          } catch {
-            const txt = await response.text();
-            errorMsg = txt || `Erro do servidor (Código ${response.status})`;
+            const rawText = await response.text();
+            try {
+              const errData = JSON.parse(rawText);
+              errorMsg = errData.error || `Erro do servidor (Código ${response.status})`;
+            } catch {
+              errorMsg = rawText || `Erro do servidor (Código ${response.status})`;
+            }
+          } catch (readErr: any) {
+            errorMsg = `Erro do servidor (Código ${response.status})`;
           }
           console.warn("Erro ao usar API de IA para OCR, usando fallback local:", errorMsg);
           useClientFallback = true;

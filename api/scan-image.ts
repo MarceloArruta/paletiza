@@ -36,7 +36,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const ai = new GoogleGenAI({ apiKey });
     let response;
     let lastError: any = null;
-    const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-flash-latest"];
+    const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
 
     for (const model of modelsToTry) {
       let attempts = 0;
@@ -64,6 +64,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         } catch (err: any) {
           lastError = err;
           attempts++;
+          
+          const errMsg = String(err.message || err || "").toLowerCase();
+          const isTransientOrQuotaError = errMsg.includes("429") || 
+                                         errMsg.includes("503") ||
+                                         errMsg.includes("resource_exhausted") || 
+                                         errMsg.includes("quota") || 
+                                         errMsg.includes("exceeded") ||
+                                         errMsg.includes("unavailable") ||
+                                         errMsg.includes("high demand") ||
+                                         errMsg.includes("temporary");
+          
+          if (isTransientOrQuotaError) {
+            console.warn(`Modelo ${model} retornou erro de limite ou indisponibilidade (Código 429/503). Pulando imediatamente para o próximo modelo.`);
+            break;
+          }
+          
           if (attempts < maxAttempts) {
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
